@@ -679,7 +679,7 @@ stm32f4_uart_interrupt_handler (void *user_value) {
 
 static void stm32f4_uart_output_event_handler (io_event_t *ev);
 
-static void
+static io_socket_t*
 stm32f4_uart_initialise (
 	io_socket_t *socket,io_t *io,io_socket_constructor_t const *C
 ) {
@@ -706,6 +706,8 @@ stm32f4_uart_initialise (
 	register_io_interrupt_handler (
 		io,this->interrupt_number,stm32f4_uart_interrupt_handler,this
 	);
+	
+	return socket;
 }
 
 static bool
