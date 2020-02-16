@@ -157,8 +157,7 @@ typedef struct PACK_STRUCTURE stm32f4xx_io {
 	STM32F4_IO_CPU_STRUCT_MEMBERS
 } stm32f4xx_io_t;
 
-io_t*	initialise_cpu_io (stm32f4xx_io_t*);
-void 	io_device_add_io_methods (io_implementation_t*);
+io_t*	initialise_cpu_io (io_t*);
 void	microsecond_delay (uint32_t us);
 
 void const* get_flash_sector_address(uint32_t);
@@ -1005,17 +1004,6 @@ stm32f4_do_gc (io_t *io,int32_t count) {
 	io_value_memory_do_gc (io_get_short_term_value_memory (io),count);
 }
 
-io_cpu_clock_pointer_t
-stm32f4_get_core_clock (io_t *io) {
-	extern EVENT_DATA stm32f4_core_clock_t cpu_core_clock;
-	return IO_CPU_CLOCK(&cpu_core_clock);
-}
-
-static io_socket_t*
-io_device_get_null_socket (io_t *io,int32_t h) {
-	return NULL;
-}
-
 void
 initialise_core_clock (io_t *io) {
 	io_cpu_clock_pointer_t core_clock = io_get_core_clock(io);
@@ -1099,35 +1087,45 @@ register_interrupt_handler (
 	i->user_value = user_value;
 }
 
-static io_byte_memory_t heap_byte_memory;
-static io_byte_memory_t umm_value_memory;
-static umm_io_value_memory_t stm;
-
-static io_implementation_t io_i = {
-	.get_byte_memory = stm32f4_io_get_byte_memory,
-	.get_short_term_value_memory = stm32f4_io_get_short_term_value_memory,
-	.do_gc = stm32f4_do_gc,
-	.get_core_clock = stm32f4_get_core_clock,
-	.get_random_u32 = stm32f4_random_uint32,
-	.log = stm32f4_log,
-	.panic = stm32f4_panic,
-	.wait_for_event = stm32f4_wait_for_event,
-	.wait_for_all_events = wait_for_all_events,
-	.in_event_thread = stm32f4_is_in_event_thread,
-	.enter_critical_section = stm32f4_enter_critical_section,
-	.exit_critical_section = stm32f4_exit_critical_section,
-	.register_interrupt_handler = register_interrupt_handler,
-	.unregister_interrupt_handler = NULL,
-	.signal_event_pending = signal_event_pending,
-	.enqueue_event = enqueue_io_event,
-	.dequeue_event = dequeue_io_event,
-	.next_event = do_next_io_event,
-	.get_socket = io_device_get_null_socket,
-};
-
 static void
 event_thread (void *io) {
 	while (next_io_event (io));
+}
+
+static void
+stm32f4_signal_task_pending (io_t *io) {
+	// no action required
+}
+
+void
+add_io_implementation_cpu_methods (io_implementation_t *io_i) {
+	add_io_implementation_core_methods (io_i);
+
+	io_i->get_byte_memory = stm32f4_io_get_byte_memory;
+	io_i->get_short_term_value_memory = stm32f4_io_get_short_term_value_memory;
+	io_i->do_gc = stm32f4_do_gc;
+	io_i->get_random_u32 = stm32f4_random_uint32;
+	io_i->signal_task_pending = stm32f4_signal_task_pending;
+	io_i->signal_event_pending = signal_event_pending;
+	io_i->enter_critical_section = stm32f4_enter_critical_section;
+	io_i->exit_critical_section = stm32f4_exit_critical_section;
+	io_i->in_event_thread = stm32f4_is_in_event_thread;
+	io_i->wait_for_event = stm32f4_wait_for_event;
+	io_i->register_interrupt_handler = register_interrupt_handler;
+	io_i->unregister_interrupt_handler = NULL;
+	io_i->wait_for_all_events = wait_for_all_events;
+
+	io_i->set_io_pin_output = NULL,
+	io_i->set_io_pin_input = NULL,
+	io_i->set_io_pin_interrupt = NULL,
+	io_i->set_io_pin_alternate = io_pin_nop,
+	io_i->read_from_io_pin = NULL,
+	io_i->write_to_io_pin = NULL,
+	io_i->toggle_io_pin = NULL,
+	io_i->valid_pin = NULL,
+
+	io_i->log = stm32f4_log;
+	io_i->panic = stm32f4_panic;
 }
 
 /*
@@ -1138,26 +1136,19 @@ event_thread (void *io) {
  *-----------------------------------------------------------------------------
  */
 io_t*
-initialise_cpu_io (stm32f4xx_io_t *cpu) {
-	io_t *io = (io_t*) cpu;
-
+initialise_cpu_io (io_t *io) {
+	stm32f4xx_io_t *cpu = (stm32f4xx_io_t*) io;
+	
 	// tune cpu ...
 	NVIC_SetPriorityGrouping(0);
 
-	io_device_add_io_methods (&io_i);
+//	io_device_add_io_methods (&io_i);
 	
-	cpu->implementation = &io_i;
-	cpu->bm = &heap_byte_memory;
-	cpu->vm = (io_value_memory_t*) &stm;
+//	cpu->implementation = &io_i;
 	cpu->in_event_thread = 0;
 
-	initialise_io (io,&io_i);
-
+//	initialise_io (io,&io_i);
 	initialise_core_clock (io);
-
-	stm.io = io;
-	initialise_io_byte_memory (io,&heap_byte_memory);
-	initialise_io_byte_memory (io,&umm_value_memory);
 
 	NVIC_SetPriority (EVENT_THREAD_INTERRUPT,EVENT_PRIORITY);
 	register_io_interrupt_handler (
@@ -1342,14 +1333,7 @@ const void* s_flash_vector_table[NUMBER_OF_INTERRUPT_VECTORS] = {
 	handle_io_cpu_interrupt,				// Floating point interrupt
 };
 
-static uint8_t ALLOCATE_ALIGN(8) UMM_SECTION_DESCRIPTOR
-heap_byte_memory_bytes[UMM_GLOBAL_HEAP_SIZE];
-static io_byte_memory_t
-heap_byte_memory = {
-	.heap = (umm_block_t*) heap_byte_memory_bytes,
-	.number_of_blocks = (UMM_GLOBAL_HEAP_SIZE / sizeof(umm_block_t)),
-};
-
+/*
 static uint8_t ALLOCATE_ALIGN(8) UMM_SECTION_DESCRIPTOR
 umm_value_memory_bytes[UMM_VALUE_HEAP_SIZE];
 static io_byte_memory_t
@@ -1358,7 +1342,7 @@ umm_value_memory = {
 	.number_of_blocks = (UMM_VALUE_HEAP_SIZE / sizeof(umm_block_t)),
 };
 
-static umm_io_value_memory_t stm = {
+umm_io_value_memory_t short_term_values = {
 	.implementation = &umm_value_memory_implementation,
 	.id_ = STVM,
 	.bm = &umm_value_memory,
@@ -1370,11 +1354,12 @@ static umm_io_value_memory_t stm = {
 io_value_memory_t*
 io_get_value_memory_by_id (uint32_t id) {
 	if (id == STVM) {
-		return (io_value_memory_t*) &stm;
+		return (io_value_memory_t*) &short_term_values;
 	} else {
 		return NULL;
 	}
 }
+*/
 
 #define FLASH_WAIT_LIMIT 		(30000000*20)
 #define SECTOR_SIZE	 			0x20000
