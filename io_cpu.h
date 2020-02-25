@@ -151,6 +151,7 @@ extern EVENT_DATA io_socket_implementation_t stm32f4_uart_implementation;
 	io_value_memory_t *vm;\
 	io_byte_memory_t *bm;\
 	uint32_t in_event_thread;\
+	io_value_pipe_t *tasks;\
 	/**/
 
 typedef struct PACK_STRUCTURE stm32f4xx_io {
