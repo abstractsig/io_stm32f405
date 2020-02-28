@@ -341,7 +341,7 @@ stm32f4_hsi_oscillator_get_frequency (io_cpu_clock_pointer_t this) {
 }
 
 static bool
-stm32f4_hsi_oscillator_start (io_cpu_clock_pointer_t this) {
+stm32f4_hsi_oscillator_start (io_t* io,io_cpu_clock_pointer_t this) {
 	if (RCC_GetFlagStatus(RCC_FLAG_HSIRDY) == 0) {
 		// HSION
 		RCC->CR |= (uint32_t)0x00000001;
@@ -375,7 +375,7 @@ stm32f4_hse_oscillator_get_frequency (io_cpu_clock_pointer_t this) {
 }
 
 static bool
-stm32f4_hse_oscillator_start (io_cpu_clock_pointer_t this) {
+stm32f4_hse_oscillator_start (io_t *io,io_cpu_clock_pointer_t this) {
 	if (RCC_GetFlagStatus(RCC_FLAG_HSERDY) == 0) {
 		RCC_HSEConfig(RCC_HSE_ON);
 		if (RCC_WaitForHSEStartUp () == SUCCESS) {
@@ -415,11 +415,11 @@ stm32f4_pll_oscillator_get_frequency (io_cpu_clock_pointer_t clock) {
 }
 
 static bool
-stm32f4_pll_oscillator_start (io_cpu_clock_pointer_t clock) {
-	if (io_cpu_dependant_clock_start_input (clock)) {
-		stm32f4_pll_t const *this = (
-			(stm32f4_pll_t const*) io_cpu_clock_ro_pointer (clock)
-		);
+stm32f4_pll_oscillator_start (io_t *io,io_cpu_clock_pointer_t clock) {
+	stm32f4_pll_t const *this = (
+		(stm32f4_pll_t const*) io_cpu_clock_ro_pointer (clock)
+	);
+	if (io_cpu_dependant_clock_start_input (io,clock)) {
 		uint32_t source = 0;
 
 		if (stm32f4_clock_is_hse (this->input)) {
@@ -485,8 +485,8 @@ stm32f4_enable_uart1_apb_clock (void) {
 }
 
 static bool
-stm32f4_ahb_clock_start (io_cpu_clock_pointer_t clock) {
-	if (io_cpu_dependant_clock_start_input (clock)) {
+stm32f4_ahb_clock_start (io_t *io,io_cpu_clock_pointer_t clock) {
+	if (io_cpu_dependant_clock_start_input (io,clock)) {
 		stm32f4_ahb_clock_t const *this = (
 			(stm32f4_ahb_clock_t const*) io_cpu_clock_ro_pointer (clock)
 		);
@@ -518,8 +518,8 @@ EVENT_DATA io_cpu_clock_implementation_t stm32f4_ahb_clock_implementation = {
 };
 
 static bool
-stm32f4_apb1_clock_start (io_cpu_clock_pointer_t clock) {
-	if (io_cpu_dependant_clock_start_input (clock)) {
+stm32f4_apb1_clock_start (io_t* io,io_cpu_clock_pointer_t clock) {
+	if (io_cpu_dependant_clock_start_input (io,clock)) {
 		stm32f4_apb_clock_t const *this = (
 			(stm32f4_apb_clock_t const*) io_cpu_clock_ro_pointer (clock)
 		);
@@ -555,8 +555,8 @@ EVENT_DATA io_cpu_clock_implementation_t stm32f4_apb1_clock_implementation = {
 };
 
 static bool
-stm32f4_apb2_clock_start (io_cpu_clock_pointer_t clock) {
-	if (io_cpu_dependant_clock_start_input (clock)) {
+stm32f4_apb2_clock_start (io_t *io,io_cpu_clock_pointer_t clock) {
+	if (io_cpu_dependant_clock_start_input (io,clock)) {
 		stm32f4_apb_clock_t const *this = (
 			(stm32f4_apb_clock_t const*) io_cpu_clock_ro_pointer (clock)
 		);
@@ -603,8 +603,8 @@ stm32f4_core_clock_get_frequency (io_cpu_clock_pointer_t clock) {
 }
 
 static bool
-stm32f4_core_clock_start (io_cpu_clock_pointer_t clock) {
-	if (io_cpu_dependant_clock_start_input (clock)) {
+stm32f4_core_clock_start (io_t *io,io_cpu_clock_pointer_t clock) {
+	if (io_cpu_dependant_clock_start_input (io,clock)) {
 		stm32f4_core_clock_t const *this = (stm32f4_core_clock_t const*) (
 			io_cpu_clock_ro_pointer (clock)
 		);
@@ -642,8 +642,8 @@ EVENT_DATA io_cpu_clock_implementation_t stm32f4_core_clock_implementation = {
 };
 
 static bool
-stm32f4_apb_peripheral_clock_start (io_cpu_clock_pointer_t clock) {
-	if (io_dependant_cpu_clock_start (clock)) {
+stm32f4_apb_peripheral_clock_start (io_t *io,io_cpu_clock_pointer_t clock) {
+	if (io_dependant_cpu_clock_start (io,clock)) {
 		stm32f4_peripheral_clock_t const *this = (
 			(stm32f4_peripheral_clock_t const*) io_cpu_clock_ro_pointer (clock)
 		);
@@ -714,7 +714,7 @@ static bool
 stm32f4_uart_open (io_socket_t *socket) {
 	stm32f4_uart_t *this = (stm32f4_uart_t*) socket;
 
-	if (io_cpu_clock_start (this->peripheral_bus_clock)) {
+	if (io_cpu_clock_start (this->io,this->peripheral_bus_clock)) {
 		if ((this->uart_registers->CR1 & USART_CR1_UE) == 0) {
 			float64_t freq = io_cpu_clock_get_frequency (this->peripheral_bus_clock);
 			uint32_t baud,temp_reg;
@@ -1010,7 +1010,7 @@ initialise_core_clock (io_t *io) {
 	io_cpu_clock_pointer_t core_clock = io_get_core_clock(io);
 	uint32_t cf = io_cpu_clock_get_frequency (core_clock);
 
-	io_cpu_clock_start (core_clock);
+	io_cpu_clock_start (io,core_clock);
 
 	//
 	// requires core clock frequency to be a multiple of 1MHz
