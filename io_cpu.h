@@ -152,6 +152,7 @@ extern EVENT_DATA io_socket_implementation_t stm32f4_uart_implementation;
 	io_byte_memory_t *bm;\
 	uint32_t in_event_thread;\
 	io_value_pipe_t *tasks;\
+	uint32_t prbs_state[4]; \
 	/**/
 
 typedef struct PACK_STRUCTURE stm32f4xx_io {
@@ -1098,6 +1099,32 @@ stm32f4_signal_task_pending (io_t *io) {
 	// no action required
 }
 
+INLINE_FUNCTION uint32_t prbs_rotl(const uint32_t x, int k) {
+	return (x << k) | (x >> (32 - k));
+}
+
+static uint32_t
+get_prbs_random_u32 (io_t *io) {
+	stm32f4xx_io_t *this = (stm32f4xx_io_t*) io;
+	uint32_t *s = this->prbs_state;
+	bool h = enter_io_critical_section (io);
+	const uint32_t result = prbs_rotl (s[0] + s[3], 7) + s[0];
+
+	const uint32_t t = s[1] << 9;
+
+	s[2] ^= s[0];
+	s[3] ^= s[1];
+	s[1] ^= s[2];
+	s[0] ^= s[3];
+
+	s[2] ^= t;
+
+	s[3] = prbs_rotl (s[3], 11);
+
+	exit_io_critical_section (io,h);
+	return result;
+}
+
 void
 add_io_implementation_cpu_methods (io_implementation_t *io_i) {
 	add_io_implementation_core_methods (io_i);
@@ -1106,6 +1133,7 @@ add_io_implementation_cpu_methods (io_implementation_t *io_i) {
 	io_i->get_short_term_value_memory = stm32f4_io_get_short_term_value_memory;
 	io_i->do_gc = stm32f4_do_gc;
 	io_i->get_random_u32 = stm32f4_random_uint32;
+	io_i->get_next_prbs_u32 = get_prbs_random_u32;
 	io_i->signal_task_pending = stm32f4_signal_task_pending;
 	io_i->signal_event_pending = signal_event_pending;
 	io_i->enter_critical_section = stm32f4_enter_critical_section;
@@ -1156,6 +1184,11 @@ initialise_cpu_io (io_t *io) {
 		io,EVENT_THREAD_INTERRUPT,event_thread,io
 	);
 
+	cpu->prbs_state[0] = io_get_random_u32(io);
+	cpu->prbs_state[1] = 0xf542d2d3;
+	cpu->prbs_state[2] = 0x6fa035c3;
+	cpu->prbs_state[3] = 0x77f2db5b;
+	
 	return io;
 }
 
