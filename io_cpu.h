@@ -334,7 +334,7 @@ configure_stm32f4_io_pin (stm32f4_io_pin_t pin) {
 // clocks
 //
 static float64_t
-stm32f4_hsi_oscillator_get_frequency (io_cpu_clock_pointer_t this) {
+stm32f4_hsi_oscillator_get_current_frequency (io_cpu_clock_pointer_t this) {
 	stm32f4_rc_oscillator_t const *c = (stm32f4_rc_oscillator_t const*) (
 		io_cpu_clock_ro_pointer (this)
 	);
@@ -355,9 +355,7 @@ stm32f4_hsi_oscillator_start (io_t* io,io_cpu_clock_pointer_t this) {
 
 EVENT_DATA io_cpu_clock_implementation_t stm32f4_hsi_oscillator_implementation = {
 	.specialisation_of = &io_cpu_clock_implementation,
-	.get_frequency = stm32f4_hsi_oscillator_get_frequency,
-	.link_input_to_output = NULL,
-	.link_output_to_input = NULL,
+	.get_current_frequency = stm32f4_hsi_oscillator_get_current_frequency,
 	.start = stm32f4_hsi_oscillator_start,
 	.stop = NULL,
 };
@@ -368,7 +366,7 @@ stm32f4_clock_is_hsi (io_cpu_clock_pointer_t clock) {
 }
 
 static float64_t
-stm32f4_hse_oscillator_get_frequency (io_cpu_clock_pointer_t this) {
+stm32f4_hse_oscillator_get_current_frequency (io_cpu_clock_pointer_t this) {
 	stm32f4_crystal_oscillator_t const *c = (stm32f4_crystal_oscillator_t const*) (
 		io_cpu_clock_ro_pointer (this)
 	);
@@ -391,9 +389,7 @@ stm32f4_hse_oscillator_start (io_t *io,io_cpu_clock_pointer_t this) {
 
 EVENT_DATA io_cpu_clock_implementation_t stm32f4_hse_oscillator_implementation = {
 	.specialisation_of = &io_cpu_clock_implementation,
-	.get_frequency = stm32f4_hse_oscillator_get_frequency,
-	.link_input_to_output = NULL,
-	.link_output_to_input = NULL,
+	.get_current_frequency = stm32f4_hse_oscillator_get_current_frequency,
 	.start = stm32f4_hse_oscillator_start,
 	.stop = NULL,
 };
@@ -404,11 +400,11 @@ stm32f4_clock_is_hse (io_cpu_clock_pointer_t clock) {
 }
 
 static float64_t
-stm32f4_pll_oscillator_get_frequency (io_cpu_clock_pointer_t clock) {
+stm32f4_pll_oscillator_get_current_frequency (io_cpu_clock_pointer_t clock) {
 	stm32f4_pll_t const *this = (
 		(stm32f4_pll_t const*) io_cpu_clock_ro_pointer (clock)
 	);
-	float64_t f = io_cpu_clock_get_frequency (this->input);
+	float64_t f = io_cpu_clock_get_current_frequency (this->input);
 
 	f = ((f / (float64_t) this->M) * (float64_t) this->N) / (float64_t) (this->P);
 
@@ -450,27 +446,23 @@ stm32f4_pll_oscillator_start (io_t *io,io_cpu_clock_pointer_t clock) {
 
 EVENT_DATA io_cpu_clock_implementation_t stm32f4_pll_implementation = {
 	.specialisation_of = &io_cpu_clock_implementation,
-	.get_frequency = stm32f4_pll_oscillator_get_frequency,
-	.link_input_to_output = NULL,
-	.link_output_to_input = NULL,
+	.get_current_frequency = stm32f4_pll_oscillator_get_current_frequency,
 	.start = stm32f4_pll_oscillator_start,
 	.stop = NULL,
 };
 
 static float64_t
-stm32f4_apb_clock_get_frequency (io_cpu_clock_pointer_t clock) {
+stm32f4_apb_clock_get_current_frequency (io_cpu_clock_pointer_t clock) {
 	stm32f4_apb_clock_t const *this = (
 		(stm32f4_apb_clock_t const*) io_cpu_clock_ro_pointer (clock)
 	);
-	float64_t f = io_cpu_clock_get_frequency (this->input);
+	float64_t f = io_cpu_clock_get_current_frequency (this->input);
 	return f / (float64_t) this->divider;
 }
 
 EVENT_DATA io_cpu_clock_implementation_t stm32f4_apb_clock_implementation = {
 	.specialisation_of = &io_cpu_clock_implementation,
-	.get_frequency = stm32f4_apb_clock_get_frequency,
-	.link_input_to_output = NULL,
-	.link_output_to_input = NULL,
+	.get_current_frequency = stm32f4_apb_clock_get_current_frequency,
 	.start = NULL,
 	.stop = NULL,
 };
@@ -511,9 +503,7 @@ stm32f4_ahb_clock_start (io_t *io,io_cpu_clock_pointer_t clock) {
 
 EVENT_DATA io_cpu_clock_implementation_t stm32f4_ahb_clock_implementation = {
 	.specialisation_of = &stm32f4_apb_clock_implementation,
-	.get_frequency = stm32f4_apb_clock_get_frequency,
-	.link_input_to_output = NULL,
-	.link_output_to_input = NULL,
+	.get_current_frequency = stm32f4_apb_clock_get_current_frequency,
 	.start = stm32f4_ahb_clock_start,
 	.stop = NULL,
 };
@@ -548,9 +538,7 @@ stm32f4_apb1_clock_start (io_t* io,io_cpu_clock_pointer_t clock) {
 
 EVENT_DATA io_cpu_clock_implementation_t stm32f4_apb1_clock_implementation = {
 	.specialisation_of = &stm32f4_apb_clock_implementation,
-	.get_frequency = stm32f4_apb_clock_get_frequency,
-	.link_input_to_output = NULL,
-	.link_output_to_input = NULL,
+	.get_current_frequency = stm32f4_apb_clock_get_current_frequency,
 	.start = stm32f4_apb1_clock_start,
 	.stop = NULL,
 };
@@ -588,19 +576,17 @@ stm32f4_apb2_clock_start (io_t *io,io_cpu_clock_pointer_t clock) {
 
 EVENT_DATA io_cpu_clock_implementation_t stm32f4_apb2_clock_implementation = {
 	.specialisation_of = &stm32f4_apb_clock_implementation,
-	.get_frequency = stm32f4_apb_clock_get_frequency,
-	.link_input_to_output = NULL,
-	.link_output_to_input = NULL,
+	.get_current_frequency = stm32f4_apb_clock_get_current_frequency,
 	.start = stm32f4_apb2_clock_start,
 	.stop = NULL,
 };
 
 static float64_t
-stm32f4_core_clock_get_frequency (io_cpu_clock_pointer_t clock) {
+stm32f4_core_clock_get_current_frequency (io_cpu_clock_pointer_t clock) {
 	stm32f4_core_clock_t const *this = (stm32f4_core_clock_t const*) (
 		io_cpu_clock_ro_pointer (clock)
 	);
-	return io_cpu_clock_get_frequency (this->input);
+	return io_cpu_clock_get_current_frequency (this->input);
 }
 
 static bool
@@ -609,7 +595,7 @@ stm32f4_core_clock_start (io_t *io,io_cpu_clock_pointer_t clock) {
 		stm32f4_core_clock_t const *this = (stm32f4_core_clock_t const*) (
 			io_cpu_clock_ro_pointer (clock)
 		);
-		float64_t new_frequency = io_cpu_clock_get_frequency (this->input);
+		float64_t new_frequency = io_cpu_clock_get_current_frequency (this->input);
 
 		if (io_math_compare_float64_ge (new_frequency,168000000.0)) {
 			// based on frequency, set WS
@@ -635,9 +621,7 @@ stm32f4_core_clock_start (io_t *io,io_cpu_clock_pointer_t clock) {
 
 EVENT_DATA io_cpu_clock_implementation_t stm32f4_core_clock_implementation = {
 	.specialisation_of = &io_cpu_clock_implementation,
-	.get_frequency = stm32f4_core_clock_get_frequency,
-	.link_input_to_output = NULL,
-	.link_output_to_input = NULL,
+	.get_current_frequency = stm32f4_core_clock_get_current_frequency,
 	.start = stm32f4_core_clock_start,
 	.stop = NULL,
 };
@@ -657,9 +641,7 @@ stm32f4_apb_peripheral_clock_start (io_t *io,io_cpu_clock_pointer_t clock) {
 
 EVENT_DATA io_cpu_clock_implementation_t stm32f4_apb_peripheral_clock_implementation = {
 	.specialisation_of = &io_cpu_clock_implementation,
-	.get_frequency = io_dependant_cpu_clock_get_frequency,
-	.link_input_to_output = NULL,
-	.link_output_to_input = NULL,
+	.get_current_frequency = io_dependant_cpu_clock_get_current_frequency,
 	.start = stm32f4_apb_peripheral_clock_start,
 	.stop = NULL,
 };
@@ -717,7 +699,7 @@ stm32f4_uart_open (io_socket_t *socket) {
 
 	if (io_cpu_clock_start (this->io,this->peripheral_bus_clock)) {
 		if ((this->uart_registers->CR1 & USART_CR1_UE) == 0) {
-			float64_t freq = io_cpu_clock_get_frequency (this->peripheral_bus_clock);
+			float64_t freq = io_cpu_clock_get_current_frequency (this->peripheral_bus_clock);
 			uint32_t baud,temp_reg;
 
 			if ((this->uart_registers->CR1 & USART_CR1_OVER8) != 0) {
@@ -1009,7 +991,7 @@ stm32f4_do_gc (io_t *io,int32_t count) {
 void
 initialise_core_clock (io_t *io) {
 	io_cpu_clock_pointer_t core_clock = io_get_core_clock(io);
-	uint32_t cf = io_cpu_clock_get_frequency (core_clock);
+	uint32_t cf = io_cpu_clock_get_current_frequency (core_clock);
 
 	io_cpu_clock_start (io,core_clock);
 
