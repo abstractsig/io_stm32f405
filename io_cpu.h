@@ -777,7 +777,7 @@ stm32f4_uart_send_message_blocking (
 		stm32f4_uart_t *this = (stm32f4_uart_t*) socket;
 		const uint8_t *b,*e;
 
-		io_encoding_get_ro_bytes (encoding,&b,&e);
+		io_encoding_get_content (encoding,&b,&e);
 		while (b < e) {
 			while (!(this->uart_registers->SR & USART_SR_TXE));
 			this->uart_registers->DR = *b++;
