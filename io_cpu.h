@@ -121,7 +121,6 @@ stm32f4_pin_set_high (stm32f4_io_pin_t pin) {
 typedef struct PACK_STRUCTURE stm32f4_uart {
 	IO_SOCKET_STRUCT_MEMBERS
 
-	io_t *io;
 	io_encoding_implementation_t const *encoding;
 	
 	io_encoding_pipe_t *tx_pipe;
@@ -753,12 +752,6 @@ stm32f4_uart_close (io_socket_t *socket) {
 	// and then ....
 }
 
-static io_t*
-stm32f4_uart_get_io (io_socket_t *socket) {
-	stm32f4_uart_t *this = (stm32f4_uart_t*) socket;
-	return this->io;
-}
-
 static io_encoding_t*
 stm32f4_uart_new_message (io_socket_t *socket) {
 	stm32f4_uart_t *this = (stm32f4_uart_t*) socket;
@@ -794,8 +787,9 @@ static void
 stm32f4_uart_output_event_handler (io_event_t *ev) {
 	stm32f4_uart_t *this = ev->user_value;
 	io_encoding_t *next;
-	while (io_encoding_pipe_get_encoding (this->tx_pipe,&next)) {
+	while (io_encoding_pipe_peek (this->tx_pipe,&next)) {
 		stm32f4_uart_send_message_blocking (ev->user_value,next);
+		io_encoding_pipe_pop_encoding (this->tx_pipe);
 	}
 	
 	io_enqueue_event(this->io,&this->signal_transmit_available);
@@ -841,7 +835,6 @@ EVENT_DATA io_socket_implementation_t stm32f4_uart_implementation = {
 	.specialisation_of = NULL,
 	.initialise = stm32f4_uart_initialise,
 	.free = NULL,
-	.get_io = stm32f4_uart_get_io,
 	.open = stm32f4_uart_open,
 	.close = stm32f4_uart_close,
 	.bindr = stm32f4_uart_bindr,
