@@ -124,8 +124,12 @@ typedef struct PACK_STRUCTURE stm32f4_uart {
 	io_encoding_implementation_t const *encoding;
 	
 	io_encoding_pipe_t *tx_pipe;
-	io_event_t signal_transmit_available;
+	io_event_t output_complete_event;
 	io_byte_pipe_t *rx_pipe;
+
+	// for single bind
+	io_event_t *signal_transmit_available;
+	io_event_t *signal_receive_data_available;
 	
 	io_cpu_clock_pointer_t peripheral_bus_clock;
 	USART_TypeDef* uart_registers;
@@ -655,7 +659,10 @@ stm32f4_uart_interrupt_handler (void *user_value) {
 	volatile uint16_t data = this->uart_registers->DR;
 
 	if (io_byte_pipe_put_byte (this->rx_pipe,data)) {
-		io_enqueue_event (this->io,io_pipe_event(this->rx_pipe));
+		// line mode?
+		if (this->signal_receive_data_available) {
+			io_enqueue_event (this->io,this->signal_receive_data_available);
+		}
 	}
 }
 
@@ -668,10 +675,8 @@ stm32f4_uart_initialise (
 	stm32f4_uart_t *this = (stm32f4_uart_t*) socket;
 	this->io = io;
 
-	initialise_io_event (
-		&this->signal_transmit_available,NULL,this
-	);
-
+	this->signal_transmit_available = NULL;
+	this->signal_receive_data_available = NULL;
 	
 	this->rx_pipe = mk_io_byte_pipe (
 		io_get_byte_memory(io),C->receive_pipe_length
@@ -682,7 +687,7 @@ stm32f4_uart_initialise (
 	);
 
 	initialise_io_event (
-		io_pipe_event(this->tx_pipe),stm32f4_uart_output_event_handler,this
+		&this->output_complete_event,stm32f4_uart_output_event_handler,this
 	);
 
 	register_io_interrupt_handler (
@@ -792,43 +797,35 @@ stm32f4_uart_output_event_handler (io_event_t *ev) {
 		io_encoding_pipe_pop_encoding (this->tx_pipe);
 	}
 	
-	io_enqueue_event(this->io,&this->signal_transmit_available);
+	if (this->signal_transmit_available) {
+		io_enqueue_event (this->io,this->signal_transmit_available);
+	}
 }
 
 static size_t
 stm32f4_uart_mtu (io_socket_t const *socket) {
 	return 1024;
-}	
-
-static io_event_t*
-stm32f4_uart_bindr (io_socket_t *socket,io_event_t *rx) {
-	stm32f4_uart_t *this = (stm32f4_uart_t*) socket;
-	if (!io_event_is_active (io_pipe_event(this->rx_pipe))) {
-		merge_into_io_event(rx,io_pipe_event(this->rx_pipe));
-		return io_pipe_event(this->rx_pipe);
-	} else {
-		return NULL;
-	}
 }
 
-static void*
-get_new_encoding (void *socket) {
-	return io_socket_new_message (socket);
+static bool
+stm32f4_uart_bind_to_outer (io_socket_t *socket,io_socket_t *outer) {
+	return false;
 }
 
-static io_pipe_t*
-stm32f4_uart_bindt (io_socket_t *socket,io_event_t *ev) {
+static bool
+stm32f4_uart_bind (io_socket_t *socket,io_address_t a,io_event_t *tx,io_event_t *rx) {
 	stm32f4_uart_t *this = (stm32f4_uart_t*) socket;
-	if (!io_event_is_active (io_pipe_event(this->tx_pipe))) {
-		
-		this->signal_transmit_available = *ev;
-		this->tx_pipe->user_action = get_new_encoding;
-		this->tx_pipe->user_value = this;
 
-		return (io_pipe_t*) (this->tx_pipe);
-	} else {
-		return NULL;
-	}
+	this->signal_transmit_available = tx;
+	this->signal_receive_data_available = rx;
+
+	return true;
+}
+
+io_pipe_t*
+stm32f4_uart_get_receive_pipe (io_socket_t *socket) {
+	stm32f4_uart_t *this = (stm32f4_uart_t*) socket;
+	return (io_pipe_t*) this->rx_pipe;
 }
 
 EVENT_DATA io_socket_implementation_t stm32f4_uart_implementation = {
@@ -837,8 +834,9 @@ EVENT_DATA io_socket_implementation_t stm32f4_uart_implementation = {
 	.free = NULL,
 	.open = stm32f4_uart_open,
 	.close = stm32f4_uart_close,
-	.bindr = stm32f4_uart_bindr,
-	.bindt = stm32f4_uart_bindt,
+	.bind_to_outer_socket = stm32f4_uart_bind_to_outer,
+	.bind_inner = stm32f4_uart_bind,
+	.get_receive_pipe = stm32f4_uart_get_receive_pipe,
 	.new_message = stm32f4_uart_new_message,
 	.send_message = stm32f4_uart_send_message_blocking,
 	.iterate_inner_sockets = NULL,
