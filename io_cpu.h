@@ -670,7 +670,7 @@ static void stm32f4_uart_output_event_handler (io_event_t *ev);
 
 static io_socket_t*
 stm32f4_uart_initialise (
-	io_socket_t *socket,io_t *io,io_socket_constructor_t const *C
+	io_socket_t *socket,io_t *io,io_settings_t const *C
 ) {
 	stm32f4_uart_t *this = (stm32f4_uart_t*) socket;
 	this->io = io;
@@ -823,7 +823,7 @@ stm32f4_uart_bind (io_socket_t *socket,io_address_t a,io_event_t *tx,io_event_t 
 }
 
 io_pipe_t*
-stm32f4_uart_get_receive_pipe (io_socket_t *socket) {
+stm32f4_uart_get_receive_pipe (io_socket_t *socket,io_address_t address) {
 	stm32f4_uart_t *this = (stm32f4_uart_t*) socket;
 	return (io_pipe_t*) this->rx_pipe;
 }
