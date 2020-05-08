@@ -698,7 +698,7 @@ stm32f4_uart_initialise (
 }
 
 static bool
-stm32f4_uart_open (io_socket_t *socket) {
+stm32f4_uart_open (io_socket_t *socket,io_socket_open_flag_t flag) {
 	stm32f4_uart_t *this = (stm32f4_uart_t*) socket;
 
 	if (io_cpu_clock_start (this->io,this->peripheral_bus_clock)) {
