@@ -828,10 +828,17 @@ stm32f4_uart_get_receive_pipe (io_socket_t *socket,io_address_t address) {
 	return (io_pipe_t*) this->rx_pipe;
 }
 
+void
+stm32f4_uart_flush (io_socket_t *socket) {
+	stm32f4_uart_t *this = (stm32f4_uart_t*) socket;
+	while (io_encoding_pipe_count_occupied_slots (this->tx_pipe) > 0);
+}
+
 EVENT_DATA io_socket_implementation_t stm32f4_uart_implementation = {
-	.specialisation_of = NULL,
+	SPECIALISE_IO_SOCKET_IMPLEMENTATION (
+		&io_physical_socket_implementation
+	)
 	.initialise = stm32f4_uart_initialise,
-	.free = NULL,
 	.open = stm32f4_uart_open,
 	.close = stm32f4_uart_close,
 	.bind_to_outer_socket = stm32f4_uart_bind_to_outer,
@@ -839,8 +846,7 @@ EVENT_DATA io_socket_implementation_t stm32f4_uart_implementation = {
 	.get_receive_pipe = stm32f4_uart_get_receive_pipe,
 	.new_message = stm32f4_uart_new_message,
 	.send_message = stm32f4_uart_send_message_blocking,
-	.iterate_inner_sockets = NULL,
-	.iterate_outer_sockets = NULL,
+	.flush = stm32f4_uart_flush,
 	.mtu = stm32f4_uart_mtu,
 };
 
@@ -1077,7 +1083,7 @@ INLINE_FUNCTION uint32_t prbs_rotl(const uint32_t x, int k) {
 }
 
 static uint32_t
-get_prbs_random_u32 (io_t *io) {
+stm32f4_get_prbs_random_u32 (io_t *io) {
 	stm32f4xx_io_t *this = (stm32f4xx_io_t*) io;
 	uint32_t *s = this->prbs_state;
 	bool h = enter_io_critical_section (io);
@@ -1106,7 +1112,7 @@ add_io_implementation_cpu_methods (io_implementation_t *io_i) {
 	io_i->get_short_term_value_memory = stm32f4_io_get_short_term_value_memory;
 	io_i->do_gc = stm32f4_do_gc;
 	io_i->get_random_u32 = stm32f4_random_uint32;
-	io_i->get_next_prbs_u32 = get_prbs_random_u32;
+	io_i->get_next_prbs_u32 = stm32f4_get_prbs_random_u32;
 	io_i->signal_task_pending = stm32f4_signal_task_pending;
 	io_i->signal_event_pending = signal_event_pending;
 	io_i->enter_critical_section = stm32f4_enter_critical_section;
