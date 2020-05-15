@@ -1614,16 +1614,6 @@ void sha256_final(sha256_context_t *ctx, uint8_t hash[])
 	}
 }
 #endif /* IMPLEMENT_STM32F4_IO_CPU */
-#ifdef IMPLEMENT_VERIFY_IO_CPU
-#include <verify_io.h>
-
-#define IO_CPU_UNIT_TESTS
-
-#else
-
-#define IO_CPU_UNIT_TESTS
-
-#endif /* IMPLEMENT_VERIFY_IO_CPU */
 #endif /* io_cpu_H_ */
 /*
 ------------------------------------------------------------------------------
