@@ -8,6 +8,53 @@
 #include <io_core.h>
 #include <stm32f4xx_peripherals.h>
 
+io_byte_memory_t* stm32f4_io_get_byte_memory (io_t*);
+io_value_memory_t* stm32f4_io_get_short_term_value_memory (io_t*);
+void stm32f4_do_gc (io_t*,int32_t);
+void stm32f4_signal_event_pending (io_t*);
+void stm32f4_wait_for_event (io_t*);
+void stm32f4_wait_for_all_events (io_t*);
+bool stm32f4_is_in_event_thread (io_t*);
+bool stm32f4_enter_critical_section (io_t*);
+void stm32f4_exit_critical_section (io_t*,bool);
+void stm32f4_register_interrupt_handler (io_t*,int32_t,io_interrupt_action_t,void*);
+void stm32f4_signal_task_pending (io_t*);
+uint32_t stm32f4_random_uint32 (io_t*);
+uint32_t stm32f4_get_prbs_random_u32 (io_t*);
+void stm32f4_log (io_t*,char const*,va_list);
+void stm32f4_panic (io_t*,int);
+
+#define SPECIALISE_IO_CPU_IMPLEMENTATION(S) \
+	SPECIALISE_IO_IMPLEMENTATION(S) \
+	.get_byte_memory = stm32f4_io_get_byte_memory, \
+	.get_short_term_value_memory = stm32f4_io_get_short_term_value_memory, \
+	.do_gc = stm32f4_do_gc, \
+	.get_random_u32 = stm32f4_random_uint32, \
+	.get_next_prbs_u32 = stm32f4_get_prbs_random_u32, \
+	.wait_for_event = stm32f4_wait_for_event, \
+	.wait_for_all_events = stm32f4_wait_for_all_events, \
+	.signal_event_pending = stm32f4_signal_event_pending, \
+	.in_event_thread = stm32f4_is_in_event_thread, \
+	.signal_task_pending = stm32f4_signal_task_pending, \
+	.enter_critical_section = stm32f4_enter_critical_section, \
+	.exit_critical_section = stm32f4_exit_critical_section, \
+	.register_interrupt_handler = stm32f4_register_interrupt_handler, \
+	.log = stm32f4_log, \
+	.panic = stm32f4_panic, \
+	.set_io_pin_alternate = io_pin_nop,\
+	/**/
+	
+/*
+	.unregister_interrupt_handler = NULL;
+	.set_io_pin_output = NULL,
+	.set_io_pin_input = NULL,
+	.set_io_pin_interrupt = NULL,
+	.read_from_io_pin = NULL,
+	.write_to_io_pin = NULL,
+	.toggle_io_pin = NULL,
+	.valid_pin = NULL,
+*/
+
 //
 // clocks
 //
@@ -896,10 +943,9 @@ stm32f4_analog_read (ADC_TypeDef *ADCx,uint32_t channel_number, bool fastConvers
 }
 
 //
-// to generate, repeatedly read the voltage reference and XOR
-// it into a rotated number to get a random-ish result
+// should be able to use the RNG
 //
-static uint32_t
+uint32_t
 stm32f4_random_uint32 (io_t *io) {
 	ADC_TempSensorVrefintCmd(ENABLE);
 	// don't wait here. We want to be reading as the voltage reference
@@ -913,36 +959,36 @@ stm32f4_random_uint32 (io_t *io) {
 	return v;
 }
 
-static void
+void
 stm32f4_log (io_t *io,char const *fmt,va_list va) {
 
 }
 
-static io_byte_memory_t*
+io_byte_memory_t*
 stm32f4_io_get_byte_memory (io_t *io) {
 	stm32f4xx_io_t *this = (stm32f4xx_io_t*) io;
 	return this->bm;
 }
 
-static io_value_memory_t*
+io_value_memory_t*
 stm32f4_io_get_short_term_value_memory (io_t *io) {
 	stm32f4xx_io_t *this = (stm32f4xx_io_t*) io;
 	return this->vm;
 }
 
-static void
+void
 stm32f4_panic (io_t *io,int code) {
 	DISABLE_INTERRUPTS;
 	while (1);
 }
 
-static void
+void
 stm32f4_wait_for_event (io_t *io) {
 	__WFI();
 }
 
-static void
-wait_for_all_events (io_t *io) {
+void
+stm32f4_wait_for_all_events (io_t *io) {
 	io_event_t *event;
 	io_alarm_t *alarm;
 	do {
@@ -952,35 +998,35 @@ wait_for_all_events (io_t *io) {
 		EXIT_CRITICAL_SECTION(io);
 	} while (
 			event != &s_null_io_event
-		&&	alarm != &s_null_io_alarm
+		||	alarm != &s_null_io_alarm
 	);
 }
 
-static bool
+bool
 stm32f4_is_in_event_thread (io_t *io) {
 	return ((stm32f4xx_io_t*) io)->in_event_thread;
 }
 
-static bool
-stm32f4_enter_critical_section (io_t *env) {
+bool
+stm32f4_enter_critical_section (io_t *io) {
 	uint32_t interrupts_are_enabled = !(__get_PRIMASK() & 0x1);
 	DISABLE_INTERRUPTS;
 	return interrupts_are_enabled;
 }
 
-static void
+void
 stm32f4_exit_critical_section (io_t *io,bool were_enabled) {
 	if (were_enabled) {
 		ENABLE_INTERRUPTS;
 	}
 }
 
-static void
-signal_event_pending (io_t *io) {
+void
+stm32f4_signal_event_pending (io_t *io) {
 	SCB->ICSR |= SCB_ICSR_PENDSVSET_Msk;
 }
 
-static void
+void
 stm32f4_do_gc (io_t *io,int32_t count) {
 	io_value_memory_do_gc (io_get_short_term_value_memory (io),count);
 }
@@ -1057,8 +1103,8 @@ handle_io_cpu_interrupt (void) {
 	interrupt->action(interrupt->user_value);
 }
 
-static void	
-register_interrupt_handler (
+void	
+stm32f4_register_interrupt_handler (
 	io_t *io,int32_t number,io_interrupt_action_t handler,void *user_value
 ) {
 	io_interrupt_handler_t *i = (
@@ -1073,7 +1119,7 @@ event_thread (void *io) {
 	while (next_io_event (io));
 }
 
-static void
+void
 stm32f4_signal_task_pending (io_t *io) {
 	// no action required
 }
@@ -1082,7 +1128,7 @@ INLINE_FUNCTION uint32_t prbs_rotl(const uint32_t x, int k) {
 	return (x << k) | (x >> (32 - k));
 }
 
-static uint32_t
+uint32_t
 stm32f4_get_prbs_random_u32 (io_t *io) {
 	stm32f4xx_io_t *this = (stm32f4xx_io_t*) io;
 	uint32_t *s = this->prbs_state;
@@ -1102,38 +1148,6 @@ stm32f4_get_prbs_random_u32 (io_t *io) {
 
 	exit_io_critical_section (io,h);
 	return result;
-}
-
-void
-add_io_implementation_cpu_methods (io_implementation_t *io_i) {
-	add_io_implementation_core_methods (io_i);
-
-	io_i->get_byte_memory = stm32f4_io_get_byte_memory;
-	io_i->get_short_term_value_memory = stm32f4_io_get_short_term_value_memory;
-	io_i->do_gc = stm32f4_do_gc;
-	io_i->get_random_u32 = stm32f4_random_uint32;
-	io_i->get_next_prbs_u32 = stm32f4_get_prbs_random_u32;
-	io_i->signal_task_pending = stm32f4_signal_task_pending;
-	io_i->signal_event_pending = signal_event_pending;
-	io_i->enter_critical_section = stm32f4_enter_critical_section;
-	io_i->exit_critical_section = stm32f4_exit_critical_section;
-	io_i->in_event_thread = stm32f4_is_in_event_thread;
-	io_i->wait_for_event = stm32f4_wait_for_event;
-	io_i->register_interrupt_handler = register_interrupt_handler;
-	io_i->unregister_interrupt_handler = NULL;
-	io_i->wait_for_all_events = wait_for_all_events;
-
-	io_i->set_io_pin_output = NULL,
-	io_i->set_io_pin_input = NULL,
-	io_i->set_io_pin_interrupt = NULL,
-	io_i->set_io_pin_alternate = io_pin_nop,
-	io_i->read_from_io_pin = NULL,
-	io_i->write_to_io_pin = NULL,
-	io_i->toggle_io_pin = NULL,
-	io_i->valid_pin = NULL,
-
-	io_i->log = stm32f4_log;
-	io_i->panic = stm32f4_panic;
 }
 
 /*
