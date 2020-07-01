@@ -22,9 +22,13 @@ void stm32f4_signal_task_pending (io_t*);
 uint32_t stm32f4_random_uint32 (io_t*);
 uint32_t stm32f4_get_prbs_random_u32 (io_t*);
 void stm32f4_panic (io_t*,int);
+bool stm32f4_is_first_run (io_t*);
+bool stm32f4_clear_first_run (io_t*);
 
 #define SPECIALISE_IO_CPU_IMPLEMENTATION(S) \
 	SPECIALISE_IO_IMPLEMENTATION(S) \
+	.is_first_run = stm32f4_is_first_run, \
+	.clear_first_run = stm32f4_clear_first_run,\
 	.get_byte_memory = stm32f4_io_get_byte_memory, \
 	.get_short_term_value_memory = stm32f4_io_get_short_term_value_memory, \
 	.do_gc = stm32f4_do_gc, \
@@ -75,9 +79,6 @@ typedef struct PACK_STRUCTURE stm32f4xx_io {
 
 io_t*	initialise_cpu_io (io_t*);
 void	microsecond_delay (uint32_t us);
-
-void const* get_flash_sector_address(uint32_t);
-bool flash_write_callback (uint32_t,void (*) (void*,void*),void *);
 
 typedef struct {
 	uint8_t data[64];
@@ -154,6 +155,149 @@ void	unhandled_cpu_interrupt (void*);
 // implementation
 //
 //-----------------------------------------------------------------------------
+
+#define IO_CONFIG_MEMORY_SECTION __attribute__ ((section(".io_config")))
+
+static IO_CONFIG_MEMORY_SECTION io_persistant_state_t stm32f4_cpu_config = {
+	.first_run_flag = IO_FIRST_RUN_SET,
+	.power_cycles = 0,
+	.uid = {.bytes = {STATIC_UID}},
+	.secret = {{0}},
+	.shared = {{0}},
+};
+
+#define FLASH_WAIT_LIMIT 		(30000000*20)
+#define SECTOR_SIZE	 			0x20000
+
+static inline void
+unlock_flash_control_register (void) {
+	FLASH->KEYR = 0x45670123;
+	FLASH->KEYR = 0xCDEF89AB;
+}
+
+bool
+flash_wait_for_flash_ready(void) {
+	uint32_t count = 0;
+	while(FLASH->SR & FLASH_SR_BSY && count < FLASH_WAIT_LIMIT) count++;
+	return count < FLASH_WAIT_LIMIT;
+}
+
+const uint32_t stm32f4_flash_sector_map[13] = {
+	0x08000000,
+	0x08004000,
+	0x08008000,
+	0x0800C000,
+	0x08010000,
+	0x08020000,	// first 128k sector
+	0x08040000,
+	0x08060000,
+	0x08080000,
+	0x080A0000,
+	0x080C0000,
+	0x080E0000,
+	0x08100000,
+};
+
+uint32_t
+stm32f4_internal_flash_base_address_to_sector (uint32_t base) {
+	uint32_t s = 0;
+	while(s < SIZEOF(stm32f4_flash_sector_map) - 1) {
+		if (
+				(stm32f4_flash_sector_map[s] >= base)
+			&&	(stm32f4_flash_sector_map[s + 1] > base)
+		) {
+			break;
+		}
+		s++;
+	}
+	return s;
+}
+
+//
+// 128k sectors, numbers 5 through 11
+//
+bool
+stm32f4_flash_erase_sector (uint32_t sector) {
+	// can this fail?
+	flash_wait_for_flash_ready();
+
+	unlock_flash_control_register();
+
+	FLASH->CR |= (2 << 8);	//set PSIZE to x32
+	FLASH->CR |= FLASH_CR_SER;
+	FLASH->CR = (FLASH->CR & ~(0x0f << 3)) + ((0x0f & sector) << 3);
+	FLASH->CR |= FLASH_CR_STRT;
+
+	flash_wait_for_flash_ready();
+	FLASH->CR &= ~FLASH_CR_SER;
+	FLASH->CR &= ~(3 << 8);	//set PSIZE to x8
+	FLASH->CR |= FLASH_CR_LOCK;
+
+	return 1;
+}
+
+//
+// write to flash
+//
+bool
+stm32f4_flash_write_with_callback (
+	uint32_t sector,void (*cb) (uint32_t*,uint32_t*),uint32_t *user_value
+) {
+	if (!(FLASH->CR & FLASH_CR_PG)) {
+		uint32_t *flash = (uint32_t*) (stm32f4_flash_sector_map[sector]);
+
+		stm32f4_flash_erase_sector (sector);
+
+		// wait until flash is not busy
+		while (FLASH->SR & FLASH_SR_BSY);
+
+		unlock_flash_control_register();
+		FLASH->CR |= FLASH_CR_PG;	// enable write
+
+		cb(flash,user_value);
+
+		while (FLASH->SR & FLASH_SR_BSY);
+		FLASH->CR &= ~FLASH_CR_PG;
+		FLASH->CR |= FLASH_CR_LOCK;
+
+		return true;
+	} else {
+		return false;
+	}
+}
+
+bool
+stm32f4_is_first_run (io_t *io) {
+	return (stm32f4_cpu_config.first_run_flag == IO_FIRST_RUN_SET);
+}
+
+void
+stm32f4_write_cpu_config (uint32_t *dest,uint32_t *config) {
+}
+
+bool
+stm32f4_clear_first_run (io_t *io) {
+	if (stm32f4_cpu_config.first_run_flag == IO_FIRST_RUN_SET) {
+		io_persistant_state_t new_config = stm32f4_cpu_config;
+
+		new_config.first_run_flag = IO_FIRST_RUN_CLEAR;
+
+		DISABLE_INTERRUPTS;
+
+		stm32f4_flash_write_with_callback (
+			stm32f4_internal_flash_base_address_to_sector(
+				(uint32_t) &stm32f4_cpu_config
+			),
+			stm32f4_write_cpu_config,(uint32_t*) &new_config
+		);
+		
+		ENABLE_INTERRUPTS;
+
+		return memcmp (&new_config,&stm32f4_cpu_config,sizeof(io_persistant_state_t)) == 0;
+	} else {
+		return true;
+	}
+}
 
 //
 // should be able to use the RNG
@@ -568,131 +712,6 @@ const void* s_flash_vector_table[NUMBER_OF_INTERRUPT_VECTORS] = {
 	handle_io_cpu_interrupt,				// Floating point interrupt
 };
 
-/*
-static uint8_t ALLOCATE_ALIGN(8) UMM_SECTION_DESCRIPTOR
-umm_value_memory_bytes[UMM_VALUE_HEAP_SIZE];
-static io_byte_memory_t
-umm_value_memory = {
-	.heap = (umm_block_t*) umm_value_memory_bytes,
-	.number_of_blocks = (UMM_VALUE_HEAP_SIZE / sizeof(umm_block_t)),
-};
-
-umm_io_value_memory_t short_term_values = {
-	.implementation = &umm_value_memory_implementation,
-	.id_ = STVM,
-	.bm = &umm_value_memory,
-};
-
-//
-// success registered value memories
-//
-io_value_memory_t*
-io_get_value_memory_by_id (uint32_t id) {
-	if (id == STVM) {
-		return (io_value_memory_t*) &short_term_values;
-	} else {
-		return NULL;
-	}
-}
-*/
-
-#define FLASH_WAIT_LIMIT 		(30000000*20)
-#define SECTOR_SIZE	 			0x20000
-
-
-static inline void
-unlock_flash_control_register (void) {
-	FLASH->KEYR = 0x45670123;
-	FLASH->KEYR = 0xCDEF89AB;
-}
-
-bool
-flash_wait_for_flash_ready(void) {
-	uint32_t count = 0;
-	while(FLASH->SR & FLASH_SR_BSY && count < FLASH_WAIT_LIMIT) count++;
-	return count < FLASH_WAIT_LIMIT;
-}
-
-uint32_t s_sector_map[] = {
-	0x08000000,
-	0x08004000,
-	0x08008000,
-	0x0800C000,
-	0x08010000,
-	0x08020000,	// first 128k sector
-	0x08040000,
-	0x08060000,
-	0x08080000,
-	0x080A0000,
-	0x080C0000,
-	0x080E0000,
-};
-
-uint32_t
-internal_flash_base_to_sector(uint32_t base) {
-	uint32_t s = 0;
-	while(s < SIZEOF(s_sector_map)) {
-		if (s_sector_map[s] == base) break;
-		s++;
-	}
-	return s;
-}
-
-//
-// 128k sectors, numbers 5 through 11
-//
-bool
-flash_erase_sector(uint32_t sector) {
-	// wait until flash is not busy, can this fail?
-	flash_wait_for_flash_ready();
-
-	unlock_flash_control_register();
-
-	FLASH->CR |= (2 << 8);	//set PSIZE to x32
-	FLASH->CR |= FLASH_CR_SER;
-	FLASH->CR = (FLASH->CR & ~(0x0f << 3)) + ((0x0f & sector) << 3);
-	FLASH->CR |= FLASH_CR_STRT;
-
-	flash_wait_for_flash_ready();
-	FLASH->CR &= ~FLASH_CR_SER;
-	FLASH->CR &= ~(3 << 8);	//set PSIZE to x8
-	FLASH->CR |= FLASH_CR_LOCK;
-
-	return 1;
-}
-
-//
-// write to flash
-//
-bool
-flash_write_callback (uint32_t sector,void (*cb) (void*,void*),void *user_value) {
-	if (!(FLASH->CR & FLASH_CR_PG)) {
-		void *flash = (void*) (s_sector_map[sector]);
-
-		flash_erase_sector(sector);
-
-		// wait until flash is not busy
-		while (FLASH->SR & FLASH_SR_BSY);
-
-		unlock_flash_control_register();
-		FLASH->CR |= FLASH_CR_PG;	// enable write
-
-		cb(flash,user_value);
-
-		while (FLASH->SR & FLASH_SR_BSY);
-		FLASH->CR &= ~FLASH_CR_PG;
-		FLASH->CR |= FLASH_CR_LOCK;
-
-		return true;
-	} else {
-		return false;
-	}
-}
-
-void const*
-get_flash_sector_address (uint32_t sector) {
-	return (void const*) s_sector_map[sector];
-}
 
 #endif /* IMPLEMENT_STM32F4_IO_CPU */
 #endif /* io_cpu_H_ */
