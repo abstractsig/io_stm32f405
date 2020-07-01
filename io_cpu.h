@@ -198,6 +198,11 @@ const uint32_t stm32f4_flash_sector_map[13] = {
 	0x08100000,
 };
 
+void const*
+stm32f4_get_flash_sector_base_address (uint32_t sector) {
+	return (void const*) stm32f4_flash_sector_map[sector];
+}
+
 uint32_t
 stm32f4_internal_flash_base_address_to_sector (uint32_t base) {
 	uint32_t s = 0;
