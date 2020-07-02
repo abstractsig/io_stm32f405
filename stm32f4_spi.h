@@ -8,15 +8,67 @@
 #ifndef stm32f4_spi_H_
 #define stm32f4_spi_H_
 
+//
+// operated in raw binary mode, only supports one
+// inner binding
+//
+typedef struct PACK_STRUCTURE stm32f4_raw_spi_socket {
+	IO_SOCKET_STRUCT_MEMBERS
 
-#ifdef IMPLEMENT_STM32F4_IO_CPU
+	SPI_TypeDef *spi_registers;
+	
+	stm32f4_io_pin_t mosi_pin;
+	stm32f4_io_pin_t miso_pin;
+	stm32f4_io_pin_t sck_pin;
+	stm32f4_io_pin_t ss_pin;
+	
+} stm32f4_raw_spi_socket_t;
+
+extern EVENT_DATA io_socket_implementation_t stm32f4_raw_spi_socket_implementation;
+
+
+#ifdef IMPLEMENT_IO_CPU
 //-----------------------------------------------------------------------------
 //
 // implementation
 //
 //-----------------------------------------------------------------------------
 
-#endif /* IMPLEMENT_STM32F4_IO_CPU */
+/*
+ *-----------------------------------------------------------------------------
+ *-----------------------------------------------------------------------------
+ *
+ *
+ *               stm32f4_raw_spi_socket_state_closed
+ *                 |
+ *          <open> |
+ *                 v                           
+ *               stm32f4_raw_spi_socket_state_open
+ *
+ *-----------------------------------------------------------------------------
+ *-----------------------------------------------------------------------------
+ */
+static EVENT_DATA io_socket_state_t stm32f4_raw_spi_socket_state_closed;
+static EVENT_DATA io_socket_state_t stm32f4_raw_spi_socket_state_open;
+
+static EVENT_DATA io_socket_state_t stm32f4_raw_spi_socket_state_closed = {
+	SPECIALISE_IO_SOCKET_STATE (&io_socket_state)
+	.name = "closed",
+};
+
+static EVENT_DATA io_socket_state_t istm32f4_raw_spi_socket_state_open = {
+	SPECIALISE_IO_SOCKET_STATE (&io_socket_state)
+	.name = "open",
+};
+
+EVENT_DATA io_socket_implementation_t
+stm32f4_raw_spi_socket_implementation = {
+	SPECIALISE_IO_SOCKET_IMPLEMENTATION (
+		&io_physical_socket_implementation
+	)
+};
+
+#endif /* IMPLEMENT_IO_CPU */
 #endif
 /*
 ------------------------------------------------------------------------------

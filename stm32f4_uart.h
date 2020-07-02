@@ -8,6 +8,8 @@
 #ifndef stm32f4_uart_H_
 #define stm32f4_uart_H_
 
+// also see pipi_protocol_endpoint in projects/old/ntt_old1/working/cpu/microchip/saml21/things
+
 typedef struct PACK_STRUCTURE stm32f4_uart {
 	IO_SOCKET_STRUCT_MEMBERS
 
@@ -35,7 +37,7 @@ extern EVENT_DATA io_socket_implementation_t stm32f4_uart_implementation;
 #define USART_CR1_CLEAR_MASK ((uint16_t)(USART_CR1_M | USART_CR1_PCE | USART_CR1_PS | USART_CR1_TE | USART_CR1_RE))
 
 
-#ifdef IMPLEMENT_STM32F4_IO_CPU
+#ifdef IMPLEMENT_IO_CPU
 //-----------------------------------------------------------------------------
 //
 // implementation
@@ -62,7 +64,7 @@ stm32f4_uart_initialise (
 	io_socket_t *socket,io_t *io,io_settings_t const *C
 ) {
 	stm32f4_uart_t *this = (stm32f4_uart_t*) socket;
-	this->io = io;
+	initialise_io_socket (socket,io);
 
 	this->signal_transmit_available = NULL;
 	this->signal_receive_data_available = NULL;
@@ -83,7 +85,15 @@ stm32f4_uart_initialise (
 		io,this->interrupt_number,stm32f4_uart_interrupt_handler,this
 	);
 	
+	this->State = &io_socket_default_state_closed;
+	
 	return socket;
+}
+
+bool
+stm32f4_uart_is_closed (io_socket_t const *socket) {
+	stm32f4_uart_t *this = (stm32f4_uart_t*) socket;
+	return ((this->uart_registers->CR1 & USART_CR1_UE) == 0);
 }
 
 static bool
@@ -92,7 +102,9 @@ stm32f4_uart_open (io_socket_t *socket,io_socket_open_flag_t flag) {
 
 	if (io_cpu_clock_start (this->io,this->peripheral_bus_clock)) {
 		if ((this->uart_registers->CR1 & USART_CR1_UE) == 0) {
-			float64_t freq = io_cpu_clock_get_current_frequency (this->peripheral_bus_clock);
+			float64_t freq = io_cpu_clock_get_current_frequency (
+				this->peripheral_bus_clock
+			);
 			uint32_t baud,temp_reg;
 
 			if ((this->uart_registers->CR1 & USART_CR1_OVER8) != 0) {
@@ -111,8 +123,8 @@ stm32f4_uart_open (io_socket_t *socket,io_socket_open_flag_t flag) {
 
 			this->uart_registers->BRR = (uint16_t) baud;
 
-			configure_stm32f4_io_pin_alternate (this->tx_pin);
-			configure_stm32f4_io_pin_alternate (this->rx_pin);
+			io_set_pin_to_alternate (io_socket_io (this),this->tx_pin.io);
+			io_set_pin_to_alternate (io_socket_io (this),this->rx_pin.io);
 
 			temp_reg = this->uart_registers->CR2;
 			temp_reg &= (uint32_t) ~((uint32_t)USART_CR2_STOP);
@@ -160,7 +172,12 @@ static bool
 stm32f4_uart_send_message_blocking (
 	io_socket_t *socket,io_encoding_t *encoding
 ) {
-	if (is_io_binary_encoding (encoding)) {
+	bool sent = false;
+	
+	if (
+			io_socket_is_open (socket)
+		&&	is_io_binary_encoding (encoding)
+	) {
 		stm32f4_uart_t *this = (stm32f4_uart_t*) socket;
 		const uint8_t *b,*e;
 
@@ -169,12 +186,12 @@ stm32f4_uart_send_message_blocking (
 			while (!(this->uart_registers->SR & USART_SR_TXE));
 			this->uart_registers->DR = *b++;
 		}
-		unreference_io_encoding (encoding);
 
-		return true;
-	} else {
-		return false;
+		sent = true;
 	}
+	
+	unreference_io_encoding (encoding);
+	return sent;
 }
 
 static void
@@ -230,6 +247,7 @@ EVENT_DATA io_socket_implementation_t stm32f4_uart_implementation = {
 	.initialise = stm32f4_uart_initialise,
 	.open = stm32f4_uart_open,
 	.close = stm32f4_uart_close,
+	.is_closed = stm32f4_uart_is_closed,
 	.bind_to_outer_socket = stm32f4_uart_bind_to_outer,
 	.bind_inner = stm32f4_uart_bind,
 	.get_receive_pipe = stm32f4_uart_get_receive_pipe,
@@ -239,7 +257,7 @@ EVENT_DATA io_socket_implementation_t stm32f4_uart_implementation = {
 	.mtu = stm32f4_uart_mtu,
 };
 
-#endif /* IMPLEMENT_STM32F4_IO_CPU */
+#endif /* IMPLEMENT_IO_CPU */
 #endif
 /*
 ------------------------------------------------------------------------------

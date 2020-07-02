@@ -159,6 +159,12 @@ configure_stm32f4_io_pin (stm32f4_io_pin_t pin) {
 	GPIO_Init(stm_gpio_pin_port (pin), &GPIO_InitStructure);
 }
 
+void
+stm32f4_set_io_pin_alternate (io_t *io,io_pin_t p) {
+	stm32f4_io_pin_t pin = {p};
+	configure_stm32f4_io_pin_alternate (pin);
+}
+
 #endif /* IMPLEMENT_STM32F4_IO_CPU */
 #endif
 /*

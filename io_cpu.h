@@ -24,6 +24,7 @@ uint32_t stm32f4_get_prbs_random_u32 (io_t*);
 void stm32f4_panic (io_t*,int);
 bool stm32f4_is_first_run (io_t*);
 bool stm32f4_clear_first_run (io_t*);
+void stm32f4_set_io_pin_alternate (io_t*,io_pin_t);
 
 #define SPECIALISE_IO_CPU_IMPLEMENTATION(S) \
 	SPECIALISE_IO_IMPLEMENTATION(S) \
@@ -43,7 +44,7 @@ bool stm32f4_clear_first_run (io_t*);
 	.exit_critical_section = stm32f4_exit_critical_section, \
 	.register_interrupt_handler = stm32f4_register_interrupt_handler, \
 	.panic = stm32f4_panic, \
-	.set_io_pin_alternate = io_pin_nop,\
+	.set_io_pin_alternate = stm32f4_set_io_pin_alternate,\
 	/**/
 	
 /*
@@ -55,13 +56,13 @@ bool stm32f4_clear_first_run (io_t*);
 	.write_to_io_pin = NULL,
 	.toggle_io_pin = NULL,
 	.valid_pin = NULL,
+	.release_io_pin = NULL,
 */
 
 #include "stm32f4_clocks.h"
 #include "stm32f4_pins.h"
 #include "stm32f4_uart.h"
 #include "stm32f4_adc.h"
-#include "stm32f4_spi.h"
 #include "stm32f4_twi.h"
 
 #define STM32F4_IO_CPU_STRUCT_MEMBERS \
@@ -569,9 +570,7 @@ initialise_c_runtime (void) {
 	extern uint32_t ld_end_of_static_ram_allocations;
 	uint32_t *end = (uint32_t*) __get_MSP();
 	dest = &ld_end_of_static_ram_allocations;
-	while (dest < end) {
-		*dest++ = 0xdeadc0de;
-	}
+	while (dest < end) *dest++ = 0xdeadc0de;
 	
 	SCB->VTOR = FLASH_BASE;
 	make_ram_interrupt_vectors ();

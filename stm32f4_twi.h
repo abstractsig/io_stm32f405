@@ -8,6 +8,16 @@
 #ifndef stm32f4_twi_H_
 #define stm32f4_twi_H_
 
+#ifdef WITH_TWI
+// ????
+
+#include <layers/io_twi_layer.h>
+
+typedef struct PACK_STRUCTURE stm32f4_twi_master {
+	IO_TWI_MASTER_SOCKET_STRUCT_MEMBERS
+} stm32f4_twi_master_t;
+#endif
+
 
 #ifdef IMPLEMENT_STM32F4_IO_CPU
 //-----------------------------------------------------------------------------
