@@ -8,13 +8,26 @@
 #ifndef stm32f4_spi_H_
 #define stm32f4_spi_H_
 
+#define IO_SINGLE_BIND_UNCOUNTED_SOCKET_STRUCT_MEMBERS \
+	IO_SOCKET_STRUCT_MEMBERS \
+	io_encoding_pipe_t *transmit_pipe; \
+	io_event_t *signal_transmit_available; \
+	io_event_t *signal_receive_data_available; \
+	/**/
+
 //
 // operated in raw binary mode, only supports one
 // inner binding
 //
-typedef struct PACK_STRUCTURE stm32f4_raw_spi_socket {
-	IO_SOCKET_STRUCT_MEMBERS
+typedef struct PACK_STRUCTURE {
+	IO_SINGLE_BIND_UNCOUNTED_SOCKET_STRUCT_MEMBERS
 
+	io_encoding_implementation_t const *encoding;
+
+	stm32f4_io_dma_channel_t tx_dma_channel;
+	stm32f4_io_dma_channel_t rx_dma_channel;
+
+	io_cpu_clock_pointer_t peripheral_bus_clock;
 	SPI_TypeDef *spi_registers;
 	
 	stm32f4_io_pin_t mosi_pin;
@@ -22,7 +35,9 @@ typedef struct PACK_STRUCTURE stm32f4_raw_spi_socket {
 	stm32f4_io_pin_t sck_pin;
 	stm32f4_io_pin_t ss_pin;
 	
-} stm32f4_raw_spi_socket_t;
+	uint32_t maximum_sck_frequency;
+	
+} stm32f4_spi_socket_t;
 
 extern EVENT_DATA io_socket_implementation_t stm32f4_raw_spi_socket_implementation;
 
@@ -34,38 +49,137 @@ extern EVENT_DATA io_socket_implementation_t stm32f4_raw_spi_socket_implementati
 //
 //-----------------------------------------------------------------------------
 
-/*
- *-----------------------------------------------------------------------------
- *-----------------------------------------------------------------------------
- *
- *
- *               stm32f4_raw_spi_socket_state_closed
- *                 |
- *          <open> |
- *                 v                           
- *               stm32f4_raw_spi_socket_state_open
- *
- *-----------------------------------------------------------------------------
- *-----------------------------------------------------------------------------
- */
-static EVENT_DATA io_socket_state_t stm32f4_raw_spi_socket_state_closed;
-static EVENT_DATA io_socket_state_t stm32f4_raw_spi_socket_state_open;
+bool
+stm32f4_spi_socket_output_next_message (stm32f4_spi_socket_t *this) {
+	io_encoding_t *next;
+	if (
+			io_socket_is_open ((io_socket_t*) this)
+		&& io_encoding_pipe_peek (this->transmit_pipe,&next)
+	) {
+		const uint8_t *begin,*end;
+		io_encoding_get_content (next,&begin,&end);		
+		io_dma_transfer_to_peripheral (
+			(io_dma_channel_t*) &this->tx_dma_channel,begin,end - begin
+		);
+		return true;
+	} else {
+		return false;
+	}
+}
 
-static EVENT_DATA io_socket_state_t stm32f4_raw_spi_socket_state_closed = {
-	SPECIALISE_IO_SOCKET_STATE (&io_socket_state)
-	.name = "closed",
-};
+void
+stm32f4_spi_tx_dma_complete (io_event_t *ev) {
+	
+}
 
-static EVENT_DATA io_socket_state_t istm32f4_raw_spi_socket_state_open = {
-	SPECIALISE_IO_SOCKET_STATE (&io_socket_state)
-	.name = "open",
-};
+void
+stm32f4_spi_tx_dma_error (io_event_t *ev) {
+	
+}
+
+void
+stm32f4_spi_rx_dma_complete (io_event_t *ev) {
+	
+}
+
+void
+stm32f4_spi_rx_dma_error (io_event_t *ev) {
+	
+}
+
+static io_socket_t*
+stm32f4_spi_initialise (
+	io_socket_t *socket,io_t *io,io_settings_t const *C
+) {
+	stm32f4_spi_socket_t *this = (stm32f4_spi_socket_t*) socket;
+
+	initialise_io_socket (socket,io);
+	this->encoding = C->encoding;
+	
+	initialise_io_event (
+		&this->tx_dma_channel.complete,stm32f4_spi_tx_dma_complete,this
+	);
+
+	initialise_io_event (
+		&this->tx_dma_channel.error,stm32f4_spi_tx_dma_error,this
+	);
+
+	initialise_io_event (
+		&this->rx_dma_channel.complete,stm32f4_spi_rx_dma_complete,this
+	);
+
+	initialise_io_event (
+		&this->rx_dma_channel.error,stm32f4_spi_rx_dma_error,this
+	);
+
+
+	return socket;
+}
+
+static bool
+stm32f4_spi_open (io_socket_t *socket,io_socket_open_flag_t flag) {
+	stm32f4_spi_socket_t *this = (stm32f4_spi_socket_t*) socket;
+
+	if (io_cpu_clock_start (this->io,this->peripheral_bus_clock)) {
+		if ((this->spi_registers->CR1 & SPI_CR1_SPE) == 0) {
+			float64_t freq = io_cpu_clock_get_current_frequency (
+				this->peripheral_bus_clock
+			);
+			uint32_t pclock = (freq);
+			uint32_t div = 0;
+			
+			while ((pclock >> (div + 1)) > this->maximum_sck_frequency) {
+				div ++;
+				if (div > 7) {
+					return false;
+				}
+			}
+
+			io_set_pin_to_output (io_socket_io (this),this->ss_pin.io);
+			io_set_pin_to_alternate (io_socket_io (this),this->miso_pin.io);
+			io_set_pin_to_alternate (io_socket_io (this),this->mosi_pin.io);
+			io_set_pin_to_alternate (io_socket_io (this),this->sck_pin.io);
+			
+			GPIOB->BSRRL |= GPIO_Pin_6;
+
+			io_dma_controller_start_controller (this->tx_dma_channel.controller);
+			io_dma_controller_start_controller (this->rx_dma_channel.controller);
+			
+			this->spi_registers->CR1 = (
+					SPI_CR1_SPE
+				|	(div << 3)
+			);
+		}
+	}
+	
+	return true;
+}
+
+bool
+stm32f4_spi_is_closed (io_socket_t const *socket) {
+	stm32f4_spi_socket_t *this = (stm32f4_spi_socket_t*) socket;
+	return ((this->spi_registers->CR1 & SPI_CR1_SPE) == 0);
+}
+
+static io_encoding_t*
+stm32f4_spi_new_message (io_socket_t *socket) {
+	stm32f4_spi_socket_t *this = (stm32f4_spi_socket_t*) socket;
+	return reference_io_encoding (
+		new_io_encoding (
+			this->encoding,io_get_byte_memory(this->io)
+		)
+	);
+}
 
 EVENT_DATA io_socket_implementation_t
 stm32f4_raw_spi_socket_implementation = {
 	SPECIALISE_IO_SOCKET_IMPLEMENTATION (
 		&io_physical_socket_implementation
 	)
+	.initialise = stm32f4_spi_initialise,
+	.open = stm32f4_spi_open,
+	.is_closed = stm32f4_spi_is_closed,
+	.new_message = stm32f4_spi_new_message,
 };
 
 #endif /* IMPLEMENT_IO_CPU */

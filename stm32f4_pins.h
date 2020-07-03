@@ -19,10 +19,10 @@ typedef union PACK_STRUCTURE {
 		uint32_t alternate:4;
 		uint32_t active_level:1;
 		uint32_t initial_state:1;
-		uint32_t function:2;
+		uint32_t mode:2;
 		uint32_t pull_mode:2;
 		uint32_t speed:2;
-		uint32_t output_type:1;
+		uint32_t output_type:1;	// push-pull or open-drain
 		uint32_t pull:2;
 		uint32_t :9;
 	} stm;
@@ -35,15 +35,22 @@ struct stm_gpio_port {
 
 extern const struct stm_gpio_port stm_gpio_ports[];
 
-#define stm_gpio_pin_enable_port_clock(pin)	stm_gpio_ports[(pin).stm.port_id].enable_clock()
-#define stm_gpio_pin_port(pin)					stm_gpio_ports[(pin).stm.port_id].registers
-#define stm_gpio_pin_number(pin)					(pin).stm.number
-#define stm_gpio_pin_speed(pin)					(pin).stm.speed
-#define stm_gpio_pin_alternate(pin)				(pin).stm.alternate
-#define stm_gpio_pin_pull_mode(pin)				(pin).stm.pull_mode
-#define stm_gpio_pin_output_type(pin)			(pin).stm.output_type
-#define stm_gpio_pin_pull(pin)					(pin).stm.pull
-#define stm_gpio_pin_function(pin)				(pin).stm.function
+#define stm_pin_enable_port_clock(pin)		stm_gpio_ports[(pin).stm.port_id].enable_clock()
+#define stm_pin_port(pin)						stm_gpio_ports[(pin).stm.port_id].registers
+#define stm_pin_number(pin)					(pin).stm.number
+#define stm_pin_active_level(pin)			(pin).stm.active_level
+#define stm_pin_initial_state(pin)			(pin).stm.initial_state
+#define stm_pin_speed(pin)						(pin).stm.speed
+#define stm_pin_alternate(pin)				(pin).stm.alternate
+#define stm_pin_pull_mode(pin)				(pin).stm.pull_mode
+#define stm_pin_output_type(pin)				(pin).stm.output_type
+#define stm_pin_pull(pin)						(pin).stm.pull
+#define stm_pin_mode(pin)						(pin).stm.mode
+
+#define IO_PIN_ACTIVE_LOW			0
+#define IO_PIN_ACTIVE_HIGH			1
+#define IO_PIN_INACTIVE				0
+#define IO_PIN_ACTIVE				1
 
 enum {
 	STM_GPIO_PORT_A = 0,
@@ -58,12 +65,12 @@ void configure_stm32f4_io_pin (stm32f4_io_pin_t);
 
 INLINE_FUNCTION void
 stm32f4_pin_set_low (stm32f4_io_pin_t pin) {
-	stm_gpio_pin_port(pin)->BSRRH = (1 << stm_gpio_pin_number(pin));
+	stm_pin_port(pin)->BSRRH = (1 << stm_pin_number(pin));
 }
 
 INLINE_FUNCTION void
 stm32f4_pin_set_high (stm32f4_io_pin_t pin) {
-	stm_gpio_pin_port(pin)->BSRRL = (1 << stm_gpio_pin_number(pin));
+	stm_pin_port(pin)->BSRRL = (1 << stm_pin_number(pin));
 }
 
 typedef enum {
@@ -88,7 +95,7 @@ typedef enum {
 } analogue_channel_number_t;
 
 
-#ifdef IMPLEMENT_STM32F4_IO_CPU
+#ifdef IMPLEMENT_IO_CPU
 //-----------------------------------------------------------------------------
 //
 // implementation
@@ -130,19 +137,20 @@ void
 configure_stm32f4_io_pin_alternate (stm32f4_io_pin_t pin) {
 	GPIO_InitTypeDef GPIO_InitStructure;
 
-	stm_gpio_pin_enable_port_clock(pin);
+	stm_pin_enable_port_clock(pin);
 
 	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF;
-	GPIO_InitStructure.GPIO_OType = stm_gpio_pin_output_type(pin);
-	GPIO_InitStructure.GPIO_PuPd = stm_gpio_pin_pull (pin);
-	GPIO_InitStructure.GPIO_Speed = stm_gpio_pin_speed (pin);
-	GPIO_InitStructure.GPIO_Pin = (1 << stm_gpio_pin_number (pin));
-	GPIO_Init(stm_gpio_pin_port (pin), &GPIO_InitStructure);
+	GPIO_InitStructure.GPIO_OType = stm_pin_output_type(pin);
+	GPIO_InitStructure.GPIO_PuPd = stm_pin_pull (pin);
+	GPIO_InitStructure.GPIO_Speed = stm_pin_speed (pin);
+	GPIO_InitStructure.GPIO_Pin = (1 << stm_pin_number (pin));
+	GPIO_InitStructure.GPIO_PuPd = stm_pin_pull(pin);
+	GPIO_Init(stm_pin_port (pin), &GPIO_InitStructure);
 
 	GPIO_PinAFConfig (
-		stm_gpio_pin_port (pin),
-		stm_gpio_pin_number (pin),
-		stm_gpio_pin_alternate(pin)
+		stm_pin_port (pin),
+		stm_pin_number (pin),
+		stm_pin_alternate(pin)
 	);
 }
 
@@ -150,13 +158,35 @@ void
 configure_stm32f4_io_pin (stm32f4_io_pin_t pin) {
 	GPIO_InitTypeDef GPIO_InitStructure;
 
-	stm_gpio_pin_enable_port_clock(pin);
+	GPIO_InitStructure.GPIO_Mode = stm_pin_mode(pin);
+	GPIO_InitStructure.GPIO_Pin = (1 << stm_pin_number (pin));
+	GPIO_InitStructure.GPIO_OType = stm_pin_output_type(pin);
+	GPIO_InitStructure.GPIO_Speed = stm_pin_speed (pin);
+	GPIO_InitStructure.GPIO_PuPd = stm_pin_pull(pin);
+	
+	GPIO_Init(stm_pin_port (pin), &GPIO_InitStructure);
+}
+	
+void
+stm32f4_write_to_io_pin (io_t *io,io_pin_t rpin,int32_t state) {
+	stm32f4_io_pin_t pin = {rpin};
+	
+	// if analogue ...
+	
+	if (state ^ stm_pin_active_level (pin)) {
+		stm32f4_pin_set_low (pin);
+	} else {
+		stm32f4_pin_set_high(pin);
+	}
+}
 
-	GPIO_InitStructure.GPIO_Mode = stm_gpio_pin_function(pin);
-	GPIO_InitStructure.GPIO_Pin = (1 << stm_gpio_pin_number (pin));
-	GPIO_InitStructure.GPIO_OType = stm_gpio_pin_output_type(pin);
-	GPIO_InitStructure.GPIO_Speed = stm_gpio_pin_speed (pin);
-	GPIO_Init(stm_gpio_pin_port (pin), &GPIO_InitStructure);
+void
+stm32f4_set_io_pin_output (io_t *io,io_pin_t p) {
+	stm32f4_io_pin_t pin = {p};
+
+	stm_pin_enable_port_clock(pin);
+	stm32f4_write_to_io_pin (io,p,stm_pin_initial_state(pin));
+	configure_stm32f4_io_pin (pin);
 }
 
 void
@@ -165,7 +195,7 @@ stm32f4_set_io_pin_alternate (io_t *io,io_pin_t p) {
 	configure_stm32f4_io_pin_alternate (pin);
 }
 
-#endif /* IMPLEMENT_STM32F4_IO_CPU */
+#endif /* IMPLEMENT_IO_CPU */
 #endif
 /*
 ------------------------------------------------------------------------------

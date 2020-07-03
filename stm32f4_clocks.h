@@ -172,10 +172,11 @@ stm32f4_pll_oscillator_start (io_t *io,io_cpu_clock_pointer_t clock) {
 }
 
 EVENT_DATA io_cpu_clock_implementation_t stm32f4_pll_implementation = {
-	.specialisation_of = &io_cpu_clock_implementation,
+	SPECIALISE_IO_CPU_CLOCK_IMPLEMENTATION (
+		&io_cpu_clock_implementation
+	)
 	.get_current_frequency = stm32f4_pll_oscillator_get_current_frequency,
 	.start = stm32f4_pll_oscillator_start,
-	.stop = NULL,
 };
 
 static float64_t
@@ -207,6 +208,26 @@ stm32f4_enable_spi1_apb_clock (void) {
 void
 stm32f4_enable_uart1_apb_clock (void) {
 	RCC_APB2PeriphClockCmd(RCC_APB2Periph_USART1, ENABLE);
+}
+
+void
+stm32f4_enable_uart2_apb_clock (void) {
+	RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART2, ENABLE);
+}
+
+void
+stm32f4_enable_spi2_apb_clock (void) {
+	RCC_APB1PeriphClockCmd(RCC_APB1Periph_SPI2, ENABLE);
+}
+
+void
+stm32f4_enable_dma1_ahb_clock (void) {
+	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_DMA1, ENABLE);
+}
+
+void
+stm32f4_enable_dma2_ahb_clock (void) {
+	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_DMA2, ENABLE);
 }
 
 static bool

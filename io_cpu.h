@@ -25,6 +25,7 @@ void stm32f4_panic (io_t*,int);
 bool stm32f4_is_first_run (io_t*);
 bool stm32f4_clear_first_run (io_t*);
 void stm32f4_set_io_pin_alternate (io_t*,io_pin_t);
+void stm32f4_write_to_io_pin (io_t*,io_pin_t,int32_t);
 
 #define SPECIALISE_IO_CPU_IMPLEMENTATION(S) \
 	SPECIALISE_IO_IMPLEMENTATION(S) \
@@ -45,15 +46,15 @@ void stm32f4_set_io_pin_alternate (io_t*,io_pin_t);
 	.register_interrupt_handler = stm32f4_register_interrupt_handler, \
 	.panic = stm32f4_panic, \
 	.set_io_pin_alternate = stm32f4_set_io_pin_alternate,\
+	.set_io_pin_output = stm32f4_set_io_pin_output,\
+	.write_to_io_pin = stm32f4_write_to_io_pin,\
 	/**/
 	
 /*
 	.unregister_interrupt_handler = NULL;
-	.set_io_pin_output = NULL,
 	.set_io_pin_input = NULL,
 	.set_io_pin_interrupt = NULL,
 	.read_from_io_pin = NULL,
-	.write_to_io_pin = NULL,
 	.toggle_io_pin = NULL,
 	.valid_pin = NULL,
 	.release_io_pin = NULL,
@@ -64,6 +65,7 @@ void stm32f4_set_io_pin_alternate (io_t*,io_pin_t);
 #include "stm32f4_uart.h"
 #include "stm32f4_adc.h"
 #include "stm32f4_twi.h"
+#include "stm32f4_dma.h"
 
 #define STM32F4_IO_CPU_STRUCT_MEMBERS \
 	IO_STRUCT_MEMBERS				\

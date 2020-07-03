@@ -1,2 +1,2 @@
 # io_stm32f405
-stm32f405 io cpu
+stm32f405 and stm32f407 io cpus
