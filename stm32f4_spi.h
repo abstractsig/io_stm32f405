@@ -39,7 +39,7 @@ typedef struct PACK_STRUCTURE {
 	
 } stm32f4_spi_socket_t;
 
-extern EVENT_DATA io_socket_implementation_t stm32f4_raw_spi_socket_implementation;
+extern EVENT_DATA io_socket_implementation_t stm32f4_dma_spi_socket_implementation;
 
 
 #ifdef IMPLEMENT_IO_CPU
@@ -172,7 +172,7 @@ stm32f4_spi_new_message (io_socket_t *socket) {
 }
 
 EVENT_DATA io_socket_implementation_t
-stm32f4_raw_spi_socket_implementation = {
+stm32f4_dma_spi_socket_implementation = {
 	SPECIALISE_IO_SOCKET_IMPLEMENTATION (
 		&io_physical_socket_implementation
 	)

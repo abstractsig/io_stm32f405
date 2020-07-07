@@ -57,6 +57,7 @@ enum {
 	STM_GPIO_PORT_B,
 	STM_GPIO_PORT_C,
 	STM_GPIO_PORT_D,
+	STM_GPIO_PORT_E,
 };
 
 void configure_stm32f4_io_pin_alternate (stm32f4_io_pin_t);
@@ -94,6 +95,27 @@ typedef enum {
   ANALOG_CHANNEL_17,
 } analogue_channel_number_t;
 
+#define def_stm32f4_function_pin(Port,Pin,Function,Speed) {\
+			.port_id = Port,\
+			.number = Pin,\
+			.mode = GPIO_Mode_AF,\
+			.alternate = Function,\
+			.speed = Speed, \
+			.pull = GPIO_PuPd_NOPULL,\
+		}\
+		/**/
+
+#define def_stm32f4_output_pin(Port,Pin,ActiveLevel,InitialLevel,Speed) {\
+			.port_id = Port,\
+			.number = Pin,\
+			.active_level = ActiveLevel,\
+			.initial_state = InitialLevel,\
+			.mode = GPIO_Mode_OUT,\
+			.speed = Speed,\
+			.output_type = GPIO_OType_PP,\
+			.pull = GPIO_PuPd_NOPULL,\
+		}
+
 
 #ifdef IMPLEMENT_IO_CPU
 //-----------------------------------------------------------------------------
@@ -125,11 +147,17 @@ enable_gpio_port_d_clock (void) {
 	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOD, ENABLE);
 }
 
+static void
+enable_gpio_port_e_clock (void) {
+	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOE, ENABLE);
+}
+
 const struct stm_gpio_port stm_gpio_ports[] = {
 	{GPIOA,enable_gpio_port_a_clock},
 	{GPIOB,enable_gpio_port_b_clock},
 	{GPIOC,enable_gpio_port_c_clock},
 	{GPIOD,enable_gpio_port_d_clock},
+	{GPIOE,enable_gpio_port_e_clock},
 	{NULL}
 };
 
